@@ -9,8 +9,8 @@ def create_application():
     settings=load_settings()
     if settings.app_env not in {"staging","production"} or not settings.ai_integration_enabled:
         raise ConfigError("Railway requires explicit APP_ENV staging/production and enabled canonical integration")
-    if not settings.trusted_proxy_cidrs:
-        raise ConfigError("Railway requires verified TRUSTED_PROXY_CIDRS; do not use wildcard proxy trust")
+    if not settings.trusted_proxy_cidrs and not settings.railway_edge_https_enabled:
+        raise ConfigError("Railway requires verified TRUSTED_PROXY_CIDRS or explicit isolated Railway edge HTTPS mode")
     if settings.enable_dev_endpoints:
         raise ConfigError("Railway must not enable development endpoints")
     from .http import create_app

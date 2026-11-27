@@ -65,8 +65,10 @@ def create_app(settings: Settings | None = None, providers: Providers | None = N
     app.state.backend_health_probe = backend_health_probe
     from app.ingress import IntegrationIngress
     # Validate eagerly; no configuration error deferred until first request.
-    IntegrationIngress(app,trusted_proxy_cidrs=settings.trusted_proxy_cidrs)
-    app.add_middleware(IntegrationIngress,trusted_proxy_cidrs=settings.trusted_proxy_cidrs)
+    ingress_options = {"trusted_proxy_cidrs": settings.trusted_proxy_cidrs,
+                       "railway_public_domain": settings.railway_public_domain if settings.railway_edge_https_enabled else None}
+    IntegrationIngress(app, **ingress_options)
+    app.add_middleware(IntegrationIngress, **ingress_options)
 
     def require_token(x_internal_token: str | None = Header(default=None)) -> None:
         expected = settings.ai_service_token

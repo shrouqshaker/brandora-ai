@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import re
+from uuid import UUID
 from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
@@ -26,6 +28,13 @@ DEFAULT_GENERATOR_MODELS = ("gemini-flash-latest", "gemini-3.5-flash", "gemini-2
 
 class ConfigError(RuntimeError):
     """Invalid configuration; the service refuses to start (fail fast)."""
+
+
+def valid_railway_domain(value: object) -> bool:
+    """Only the generated public domain for this explicitly configured service."""
+    return isinstance(value, str) and re.fullmatch(
+        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.up\.railway\.app", value
+    ) is not None
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -86,6 +95,11 @@ class Settings:
     supplied_context_compat_enabled: bool = False
     legacy_api_enabled: bool = False
     trusted_proxy_cidrs: tuple[str, ...] = ()
+    railway_edge_https_enabled: bool = False
+    railway_public_domain: str | None = None
+    railway_project_id: str | None = None
+    railway_environment_id: str | None = None
+    railway_service_id: str | None = None
     integration_timeout_seconds: float = 25.0
     stock_quantity_disclosure_businesses: tuple[str, ...] = ()
     backend_base_url: str | None = None
@@ -108,6 +122,16 @@ class Settings:
             raise ConfigError("APP_ENV must be local, staging or production")
         if self.backend_max_response_bytes <= 0:
             raise ConfigError("BACKEND_MAX_RESPONSE_BYTES must be positive")
+        if self.railway_edge_https_enabled:
+            if self.app_env not in {"staging", "production"} or self.trusted_proxy_cidrs:
+                raise ConfigError("Railway edge HTTPS requires staging/production and a separate proxy trust mode")
+            if not valid_railway_domain(self.railway_public_domain):
+                raise ConfigError("Railway edge HTTPS requires this service's generated RAILWAY_PUBLIC_DOMAIN")
+            try:
+                for value in (self.railway_project_id, self.railway_environment_id, self.railway_service_id):
+                    UUID(value)
+            except (ValueError, TypeError, AttributeError):
+                raise ConfigError("Railway edge HTTPS requires Railway project, environment and service identities") from None
         if self.app_env != "local" and (not self.ai_service_token or len(self.ai_service_token) < 32
                 or not self.ai_service_token.isascii() or not self.ai_service_token.isprintable()
                 or self.ai_service_token.strip() != self.ai_service_token
@@ -151,6 +175,11 @@ def load_settings() -> Settings:
         supplied_context_compat_enabled=_bool("SUPPLIED_CONTEXT_COMPAT_ENABLED", False),
         legacy_api_enabled=_bool("LEGACY_API_ENABLED", False),
         trusted_proxy_cidrs=_models("TRUSTED_PROXY_CIDRS", ()),
+        railway_edge_https_enabled=_bool("RAILWAY_EDGE_HTTPS_ENABLED", False),
+        railway_public_domain=os.getenv("RAILWAY_PUBLIC_DOMAIN"),
+        railway_project_id=os.getenv("RAILWAY_PROJECT_ID"),
+        railway_environment_id=os.getenv("RAILWAY_ENVIRONMENT_ID"),
+        railway_service_id=os.getenv("RAILWAY_SERVICE_ID"),
         integration_timeout_seconds=_num("INTEGRATION_TIMEOUT_SECONDS", 25.0),
         stock_quantity_disclosure_businesses=_models("STOCK_QUANTITY_DISCLOSURE_BUSINESSES", ()),
         backend_base_url=(os.getenv("BACKEND_BASE_URL") or "").strip() or None,
