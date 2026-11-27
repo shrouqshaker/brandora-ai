@@ -83,7 +83,7 @@ def test_pure_greetings_and_thanks_never_call_backend(text):
 
 
 @pytest.mark.parametrize("text", ["where is my order?", "cancel my order", "I paid and nobody replied",
-    "what is your return policy?", "do you deliver?", "can I pay online?"])
+    "where is my order now?"])
 def test_unavailable_actions_and_policies_use_no_tools(text):
     coordinator, calls = setup()
     result = retrieve(coordinator, text)

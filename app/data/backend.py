@@ -134,6 +134,12 @@ class BackendDataAccess:
                 _same(page.customerId,scope.customer_id)
                 _same(page.conversationId,scope.conversation_id)
                 _same(page.beforeMessageId,UUID(str(before_message_id)))
+                if page.purchaseDraft and page.purchaseDraft.updatedAt:
+                    from datetime import datetime
+                    stamp=datetime.fromisoformat(page.purchaseDraft.updatedAt.replace('Z','+00:00'))
+                    boundary=datetime.fromisoformat(page.beforeMessageCreatedAt.replace('Z','+00:00'))
+                    if stamp.tzinfo is None or stamp > boundary or (stamp == boundary and page.purchaseDraft.updateMessageId.int >= page.beforeMessageId.int):
+                        raise ValueError('Draft is not before the current message')
                 for row in page.items:
                     _same(row.conversationId,scope.conversation_id)
             return await self._read("get_conversation_history",(str(conversation_id),limit,offset),

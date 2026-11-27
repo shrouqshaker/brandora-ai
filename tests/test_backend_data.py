@@ -270,7 +270,7 @@ def test_business_aggregate_checks_scope_and_does_not_create_policy_defaults():
             scope=SCOPE, context_token="fixture-a"))
     result = fetch({"id": BUSINESS_A, "name": "Fixture"})
     assert result.status == Status.AVAILABLE
-    assert result.envelope.data.model_dump(mode="json") == {"business": {"id": BUSINESS_A, "name": "Fixture"}}
+    assert result.envelope.data.model_dump(mode="json", exclude_unset=True) == {"business": {"id": BUSINESS_A, "name": "Fixture"}}
     assert fetch({"id": BUSINESS_B, "name": "Fixture"}).status == Status.SCOPE_MISMATCH
     assert fetch({"id": BUSINESS_A}).status == Status.INVALID
 

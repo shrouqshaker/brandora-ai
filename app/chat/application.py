@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from ..data.options import resolve_options
 from ..data.retrieval import RetrievalDecision
+from ..data.routing import route_current_inquiry
+from ..schemas import Intent
 from ..nlu import extract_entities
 from ..pipeline.standalone import StandalonePipeline, StandaloneExecutionResult
 from ..pipeline.evidence_planner import EvidencePlanner, Resolution, GroundedStatement, EvidenceSource
@@ -95,7 +97,9 @@ class ChatSession:
                 self.selection = Selection()
             elif declines_selection(text):
                 self.selection = Selection()
-            elif (execution.retrieval.decision == RetrievalDecision.CLARIFY
+            elif ((execution.retrieval.decision == RetrievalDecision.CLARIFY or
+                   (execution.retrieval.decision == RetrievalDecision.BUSINESS and
+                    Intent.UNKNOWN in route_current_inquiry(text).intents))
                   and extract_entities(text).product_tokens):
                 # An unresolved new topic must not leave an old purchase ready
                 # for an accidental subsequent "one of it" reference.

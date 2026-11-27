@@ -1,5 +1,10 @@
 # Brandora AI
 
+Current canonical Backend settings/policies/FAQ and suggested-order integration:
+[implementation and exact wire contracts](docs/BACKEND_SETTINGS_ORDERS.md).
+Legacy E0-3 examples below describe the older independent response schema.
+
+
 FastAPI service that answers WhatsApp customers in Egyptian Arabic. It is **read-only**:
 it never writes to the database, never calls WhatsApp and never creates orders
 (`orderCandidate` is always `null`; purchases are reported as `PURCHASE_INTENT`).

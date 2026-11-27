@@ -180,7 +180,7 @@ async def test_unsupported_or_review_cannot_become_product_or_order(text):
     backend, chat = session("fake")
     turn = await send(chat, backend, text)
     assert not turn.execution.plan.variants
-    assert not backend.calls
+    assert backend.calls == ([] if text == 'My order never arrived' else ['get_business_info'])
     assert "275.00" not in turn.response.reply
 
 

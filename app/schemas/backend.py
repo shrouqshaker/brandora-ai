@@ -171,11 +171,70 @@ class Product(BackendModel):
 class BusinessSummary(BackendModel):
     id: Identifier
     name: Annotated[StrictStr, Field(min_length=1)]
+    description: StrictStr | None = None
+    category: StrictStr | None = None
+    phone: StrictStr | None = None
+    address: StrictStr | None = None
+    logoUrl: StrictStr | None = None
+
+
+class PublicBusinessSettings(BackendModel):
+    businessId: Identifier
+    acceptsCash: StrictBool | None = None
+    acceptsOnlinePayment: StrictBool | None = None
+    deliveryEnabled: StrictBool | None = None
+    pickupEnabled: StrictBool | None = None
+    returnPolicy: StrictStr | None = None
+    paymentNotes: StrictStr | None = None
+    deliveryNotes: StrictStr | None = None
+    deliveryFee: Price | None = None
+
+
+class PublicWorkingHour(BackendModel):
+    businessId: Identifier
+    dayOfWeek: Literal['MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY','SUNDAY']
+    isOpen: StrictBool
+    opensAt: Annotated[StrictStr, Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')] | None
+    closesAt: Annotated[StrictStr, Field(pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$')] | None
+
+    @model_validator(mode='after')
+    def valid_schedule(self):
+        if self.isOpen and (not self.opensAt or not self.closesAt or self.opensAt >= self.closesAt):
+            raise ValueError('Invalid opening interval')
+        if not self.isOpen and (self.opensAt is not None or self.closesAt is not None):
+            raise ValueError('Closed day has opening interval')
+        return self
+
+
+class PublicBusinessFaq(BackendModel):
+    id: Identifier
+    question: Annotated[StrictStr, Field(min_length=1, max_length=300)]
+    answer: Annotated[StrictStr, Field(min_length=1, max_length=3000)]
+    position: Annotated[StrictInt, Field(ge=0)]
+    businessId: Identifier | None = None
+    isActive: StrictBool | None = None
 
 
 class BusinessInformation(BackendModel):
-    """Provisional minimal aggregate; unknown sections confer no factual defaults."""
+    # Optional sections support the older name-only aggregate without inventing facts.
     business: BusinessSummary
+    settings: PublicBusinessSettings | None = None
+    workingHours: list[PublicWorkingHour] = Field(default_factory=list, max_length=7)
+    faqs: list[PublicBusinessFaq] = Field(default_factory=list)
+
+    @model_validator(mode='after')
+    def consistent_sections(self):
+        if self.settings is not None and self.settings.businessId != self.business.id:
+            raise ValueError('Business scope mismatch')
+        if any(day.businessId != self.business.id for day in self.workingHours):
+            raise ValueError('Business scope mismatch')
+        if len({day.dayOfWeek for day in self.workingHours}) != len(self.workingHours):
+            raise ValueError('Duplicate weekday')
+        if len({faq.id for faq in self.faqs}) != len(self.faqs):
+            raise ValueError('Duplicate FAQ')
+        if any(faq.isActive is False or (faq.businessId is not None and faq.businessId != self.business.id) for faq in self.faqs):
+            raise ValueError('Unpublished or foreign FAQ')
+        return self
 
 
 class HistoryMessage(BackendModel):
@@ -202,6 +261,32 @@ class ScopedHistoryMessage(BackendModel):
     externalMessageId: Annotated[StrictStr,Field(max_length=255)] | None = None
 
 
+class PurchaseDraftItem(BackendModel):
+    model_config = ConfigDict(extra='forbid', frozen=True)
+    productId: Identifier
+    variantId: Identifier
+    quantity: Annotated[StrictInt, Field(ge=1, le=100)]
+
+
+class PurchaseDraft(BackendModel):
+    model_config = ConfigDict(extra='forbid', frozen=True)
+    revision: SafeInteger
+    sourceMessageId: Identifier | None
+    items: list[PurchaseDraftItem] = Field(max_length=50)
+    updatedAt: StrictStr | None
+    updateMessageId: Identifier | None
+
+    @model_validator(mode='after')
+    def unique_items(self):
+        if len({item.variantId for item in self.items}) != len(self.items):
+            raise ValueError('Duplicate draft variant')
+        if bool(self.updatedAt) != bool(self.updateMessageId):
+            raise ValueError('Incomplete draft watermark')
+        if self.items and self.sourceMessageId is None:
+            raise ValueError('Draft source is missing')
+        return self
+
+
 class AuthorizedHistoryPage(BackendModel):
     """Proposed authenticated internal envelope; not the unauthenticated PR page."""
     model_config = ConfigDict(extra="forbid",frozen=True)
@@ -210,6 +295,7 @@ class AuthorizedHistoryPage(BackendModel):
     conversationId: Identifier
     beforeMessageId: Identifier
     beforeMessageCreatedAt: Annotated[StrictStr,Field(max_length=40)]
+    purchaseDraft: PurchaseDraft | None = None
     snapshot: Annotated[StrictStr,Field(min_length=1,max_length=128)]
     order: Literal["createdAt_desc_id_desc"]
     complete: StrictBool

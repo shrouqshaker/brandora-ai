@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.offline_demo import OfflineHarness,SCENARIOS
+from app.schemas.suggestions import CanonicalAiResponse
 from app.chat.synthetic import identifier
 from app.config import ConfigError
 from app.http import create_app
@@ -28,7 +29,8 @@ def test_independent_multiturn_scenarios(name,messages,expected,harness):
         result=harness.send(body)
         assert result.status_code==200,result.text
         assert set(result.json())=={"intent","reply","requiresReview","orderCandidate"}
-        assert result.json()["orderCandidate"] is None
+        CanonicalAiResponse.model_validate(result.json())
+        assert result.json()["intent"] != "CONFIRMED_ORDER"
     assert all(fragment in result.json()["reply"] for fragment in expected),result.text
     if name in {"comparison","named_comparison"}:
         assert result.json()["intent"]=="INQUIRY"
@@ -96,7 +98,7 @@ def test_historical_assistant_facts_are_ignored_and_customer_selectors_are_fresh
     assert "310.00 EGP" in changed.json()["reply"] and "275" not in changed.text
     purchase=harness.send(harness.body("I want two of it",rows))
     assert purchase.status_code==200 and "310.00 EGP" in purchase.json()["reply"]
-    assert purchase.json()["orderCandidate"] is None
+    assert purchase.json()["orderCandidate"]["items"][0]["quantity"] == 2
 
 
 def test_duplicate_message_boundary_no_action_processing(harness):
@@ -104,7 +106,10 @@ def test_duplicate_message_boundary_no_action_processing(harness):
     first=harness.send(body)
     second=harness.send(body)
     assert first.status_code==second.status_code==200
-    assert first.json()==second.json() and first.json()["orderCandidate"] is None
+    CanonicalAiResponse.model_validate(first.json())
+    CanonicalAiResponse.model_validate(second.json())
+    assert first.json()["orderCandidate"]["items"][0]["quantity"] == 2
+    assert second.json()["orderCandidate"] is None  # Backend already applied this source; it owns the first saved reply.
     assert first.headers["x-ai-message-id"]==second.headers["x-ai-message-id"]
     # No claimed exactly-once cache: Backend owns delivery/idempotency.
     assert len(harness.calls)>0
@@ -320,7 +325,7 @@ def test_retrieved_history_restores_changed_selections(harness,message,price):
     body=harness.body(message,[{"id":identifier(9,501),"senderType":"CUSTOMER","content":"black tshirt size L"}])
     result=harness.send(body)
     assert result.status_code==200 and price in result.json()["reply"]
-    assert result.json()["orderCandidate"] is None
+    CanonicalAiResponse.model_validate(result.json())
     assert harness.calls[0]["tool"]=="get_conversation_history"
 
 

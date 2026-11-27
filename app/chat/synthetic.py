@@ -50,6 +50,7 @@ class SyntheticBackend:
     """Instance-owned mutable fixtures support offline stock-change testing only."""
     def __init__(self):
         self.products = {i: catalog(i) for i in (1, 2)}
+        self.business_info = {i: {"business": {"id": identifier(1, i), "name": f"Synthetic shop {i}"}} for i in (1, 2)}
         self.calls = []
         self.status_code = None
 
@@ -80,7 +81,7 @@ class SyntheticBackend:
         if tool == "get_products":
             data = page(products, args.get("limit", 20), args.get("offset", 0))
         elif tool == "get_business_info":
-            data = {"business": {"id": identifier(1, selected), "name": f"Synthetic shop {selected}"}}
+            data = self.business_info[selected]
         elif tool == "get_conversation_history":
             data = page([], args.get("limit", 20), args.get("offset", 0))
         else:

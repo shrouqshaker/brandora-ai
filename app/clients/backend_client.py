@@ -41,7 +41,7 @@ _TOOLS = {
 
 _MAX_SAFE_INTEGER = 2**53 - 1
 PRODUCT_TOOLS = frozenset({"get_products", "get_product_details", "get_product_variants", "get_variant_details"})
-CONVERSATION_TOOLS = PRODUCT_TOOLS | {"get_conversation_history"}
+CONVERSATION_TOOLS = PRODUCT_TOOLS | {"get_conversation_history", "get_business_info"}
 
 
 def _uuid(value: Any) -> bool:

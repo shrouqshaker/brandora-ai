@@ -13,6 +13,10 @@ def route_current_inquiry(text: str) -> RouterResult:
     result = classify_rules(text, RuleContext())
     intent = result.intents[0] if result.intents else Intent.UNKNOWN
     normalized = normalize(text)
+    public_topics = ("store name", "business name", "shop name", "اسم المتجر", "اسم المحل", "اسم البيزنس",
+                     "working hours", "مواعيد", "عنوان المحل", "رقم المحل", "طرق الدفع", "رسوم التوصيل")
+    if intent not in OWNER_REVIEW_INTENTS | {Intent.COMPLAINT, Intent.ORDER_STATUS, Intent.ORDER_CANCEL, Intent.ORDER_MODIFY} and any(normalize(word) in normalized for word in public_topics):
+        result.intents = [Intent.GENERAL_INFO]
     if normalized in {"how do i use this bot", "how does this bot work"}:
         result.intents = [Intent.HELP]
     elif normalized in {"i have a complaint", normalize("عندي شكوى")}:

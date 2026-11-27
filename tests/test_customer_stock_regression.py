@@ -3,6 +3,7 @@ import asyncio
 from dataclasses import replace
 
 import pytest
+from app.schemas.suggestions import CanonicalAiResponse
 
 from app.offline_demo import OfflineHarness
 from app.chat.__main__ import build
@@ -23,7 +24,8 @@ def send(h,message):
     assert result.status_code==200,result.text
     response=result.json()
     assert set(response)=={"intent","reply","requiresReview","orderCandidate"}
-    assert response["orderCandidate"] is None
+    CanonicalAiResponse.model_validate(response)
+    assert response["intent"] != "CONFIRMED_ORDER"
     return response
 
 
@@ -76,13 +78,13 @@ def test_contextual_changes_refresh_data(message,fragments):
         assert "205" not in response["reply"] and "0 جنيه" not in response["reply"]
 
 
-def test_unrelated_named_product_does_not_inherit_or_read_history():
+def test_unrelated_named_product_does_not_inherit_options_while_reconstructing_cart():
     h=OfflineHarness()
     for text in PREFIX:
         send(h,text)
     start=len(h.calls)
     response=send(h,"بدل الأسود عايزة الكاب")
-    assert "get_conversation_history" not in [c["tool"] for c in h.calls[start:]]
+    assert "get_conversation_history" in [c["tool"] for c in h.calls[start:]]
     assert "get_products" in [c["tool"] for c in h.calls[start:]]
     assert "275" not in response["reply"] and "285" not in response["reply"]
     assert not response["requiresReview"]
@@ -162,7 +164,8 @@ def test_correction_with_untrusted_history_asks_without_catalog_guess(status):
     response=result.json()
     assert "تقصد أنهي منتج" in response["reply"]
     assert [c["tool"] for c in h.calls]==["get_conversation_history"]
-    assert response["orderCandidate"] is None and not response["requiresReview"]
+    CanonicalAiResponse.model_validate(response)
+    assert response["intent"] != "CONFIRMED_ORDER" and not response["requiresReview"]
 
 
 def test_disclosure_policy_does_not_apply_to_another_business():

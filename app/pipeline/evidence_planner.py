@@ -132,7 +132,7 @@ class EvidencePlan:
 _POLICY = EvidenceSource("application_policy", None, "currency.EGP")
 _TEMPLATE = EvidenceSource("deterministic_template", None, "read_only_safety")
 _AUTH = {RetrievalStatus.AUTHORIZATION_FAILED, RetrievalStatus.SCOPE_MISMATCH}
-_UNSUPPORTED = {Intent.ORDER_STATUS, Intent.ORDER_MODIFY, Intent.ORDER_CANCEL, Intent.RETURNS_POLICY}
+_UNSUPPORTED = {Intent.ORDER_STATUS, Intent.ORDER_MODIFY, Intent.ORDER_CANCEL}
 
 
 def _say(language, en, ar):
@@ -262,10 +262,16 @@ class EvidencePlanner:
         except PermissionError:
             return simple(Resolution.SCOPE_MISMATCH, "scope_mismatch", "I cannot verify that information here.",
                           "مش قادر أتحقق من المعلومات دي هنا.", limitations=("inconsistent_scope",))
-        if result.decision == RetrievalDecision.BUSINESS and businesses:
-            business, source = businesses[-1]
+        if result.decision == RetrievalDecision.BUSINESS:
+            from ..data.business_info import business_answer, missing_business_answer
+            if businesses:
+                business, source = businesses[-1]
+                text, review = business_answer(business, query.text, language)
+            else:
+                text, review, source = missing_business_answer(language), True, _TEMPLATE
+            base['requires_review'] = review
             return EvidencePlan(**base, resolution=Resolution.BUSINESS_INFO, statements=(
-                _statement("business_identity", _say(language, f'Business name: "{business.business.name}".', f'اسم النشاط: "{business.business.name}".'), source),))
+                _statement("business_identity", text, source),))
         limitations = ["recorded_observations_not_reservations", "no_stable_snapshot"]
         if result.inquiry is None:
             # Compatibility for earlier isolated, manually built component fixtures.

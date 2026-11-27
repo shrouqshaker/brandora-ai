@@ -250,14 +250,17 @@ def test_description_injection_is_omitted_from_generation_and_safe_draft():
     assert "250.00 EGP" in result.response.reply and all(c[3] == SCOPE_A for c in calls)
 
 
-def test_supported_business_identity_and_unsupported_policies_use_only_permitted_tools():
+def test_supported_business_identity_and_missing_policies_use_only_permitted_read_tools():
     pipeline, calls, _ = setup()
     result = execute(pipeline, inquiry=Inquiry(text="what is your business name?"))
     assert "Fixture Business" in result.response.reply
     assert [c[0] for c in calls] == ["get_business_info"]
     pipeline, calls, fake = setup()
     result = execute(pipeline, inquiry=Inquiry(text="do you deliver?"))
-    assert result.plan.resolution == Resolution.UNSUPPORTED and calls == fake.calls == []
+    assert result.plan.resolution == Resolution.BUSINESS_INFO
+    assert [call[0] for call in calls] == ['get_business_info']
+    assert result.response.requiresReview and result.response.orderCandidate is None
+    assert fake.calls == []
 
 
 def test_generic_discovery_stops_at_useful_partial_page_and_asks_which_product():

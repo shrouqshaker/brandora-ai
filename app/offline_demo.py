@@ -20,6 +20,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from google.auth import crypt,jwt
 
 from .config import Settings
+from .schemas.suggestions import CanonicalAiResponse
 from .http import create_app
 from .chat.synthetic import SyntheticBackend,identifier
 from .providers.groq import GroqClient
@@ -41,6 +42,7 @@ class OfflineHarness:
         self.counter=0
         self.timeline=0
         self.messages={}
+        self.purchase_drafts={}
         self.history_status={}
         self.history_patch=None
         self.history_chunk_size=20
@@ -96,7 +98,11 @@ class OfflineHarness:
             limit,offset=body["arguments"]["limit"],body["arguments"]["offset"]
             items=prior[offset:offset+min(limit,self.history_chunk_size)]
             end=offset+len(items)
-            data={"businessId":claims["businessId"],"customerId":claims["customerId"],
+            draft=self.purchase_drafts.get(scope, {"revision":0,"sourceMessageId":None,"items":[],"updatedAt":None,"updateMessageId":None})
+            if draft and draft['updatedAt'] and (draft['updatedAt'] > anchor['createdAt'] or
+                    (draft['updatedAt'] == anchor['createdAt'] and draft['updateMessageId'] >= anchor['id'])):
+                draft=None
+            data={"purchaseDraft":deepcopy(draft),"businessId":claims["businessId"],"customerId":claims["customerId"],
                 "conversationId":claims["conversationId"],"beforeMessageId":claims["messageId"],
                 "beforeMessageCreatedAt":anchor["createdAt"],"order":"createdAt_desc_id_desc",
                 "snapshot":hashlib.sha256(json.dumps(prior,sort_keys=True).encode()).hexdigest(),
@@ -171,7 +177,15 @@ class OfflineHarness:
         from fastapi.testclient import TestClient
         raw,headers=self.encode(body,**claims_patch)
         self.persist_current(body)
-        return TestClient(self.app).post("/v2/ai/respond",content=raw,headers=headers)
+        response=TestClient(self.app).post("/v2/ai/respond",content=raw,headers=headers)
+        if response.status_code==200 and response.json()['orderCandidate'] is not None:
+            scope=tuple(body[k] for k in ('businessId','customerId','conversationId'))
+            candidate=response.json()['orderCandidate']
+            anchor=next(row for row in self.messages[scope] if row['id']==body['messageId'])
+            previous=self.purchase_drafts.get(scope,{"revision":0})
+            self.purchase_drafts[scope]={"revision":previous['revision']+1,"sourceMessageId":body['messageId'] if candidate['items'] else None,
+                "items":deepcopy(candidate['items']),"updatedAt":anchor['createdAt'],"updateMessageId":body['messageId']}
+        return response
 
 
 def demo_app():
@@ -222,8 +236,10 @@ def evaluate():
             result=harness.send(body)
             tools=[c["tool"] for c in harness.calls[start:]]
             print(json.dumps({"scenario":name,"message":message,"tools":tools,"syntheticGroq":True},ensure_ascii=False))
-            if result.status_code != 200 or result.json().get("orderCandidate") is not None:
+            if result.status_code != 200:
                 failures.append(name)
+            else:
+                CanonicalAiResponse.model_validate(result.json())
         passed=result.status_code==200 and all(fragment in result.json().get("reply","") for fragment in expected)
         if not passed:
             failures.append(name)

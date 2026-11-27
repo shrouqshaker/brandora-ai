@@ -27,6 +27,7 @@ from .providers.failover import ProviderChain
 from .providers.groq import GroqClient
 from .schemas.backend import ExpectedScope, Identifier, RetrievalStatus
 from .schemas.response import AiResponse
+from .schemas.suggestions import CanonicalAiResponse
 from .conversation_api import ConversationFields,ConversationIdentityFields, execute_conversation,execute_supplied_conversation
 
 
@@ -183,7 +184,7 @@ def build_products_router(settings, *, transport=None, model_client=None):
                 raise HTTPException(403,"Backend context body binding mismatch")
             return claims,token
 
-        @router.post("/v2/ai/respond",response_model=AiResponse,tags=["ai-integration"])
+        @router.post("/v2/ai/respond",response_model=CanonicalAiResponse,response_model_exclude_none=False,tags=["ai-integration"])
         async def conversation(body: ConversationRequest,response: Response,verified=Depends(authenticate_conversation)):
             claims,token=verified
             if any(getattr(claims,key) != getattr(body,key) for key in
@@ -193,8 +194,7 @@ def build_products_router(settings, *, transport=None, model_client=None):
                 turn,history_status=await asyncio.wait_for(execute_conversation(body,token,canonical_data,interpreter,responder,settings),
                                             timeout=settings.integration_timeout_seconds)
                 result=turn.response
-                if result.orderCandidate is not None or result.intent.value == "CONFIRMED_ORDER":
-                    raise ValueError()
+                result = CanonicalAiResponse.model_validate(result.model_dump(mode="json"))
                 response.headers["X-AI-History-Status"]=history_status
                 response.headers["X-AI-Contract"]="conversation-tools-v1"
                 response.headers["X-AI-Understanding-Provider"]=turn.understanding.source.split("_")[0]

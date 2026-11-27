@@ -250,7 +250,7 @@ class RetrievalCoordinator:
         followup = is_contextual_followup(query.text)
         if intent in {Intent.GREETING, Intent.THANKYOU} and len(route.intents) == 1 and not selectors and not query.option_values:
             return execution.result(RetrievalDecision.SKIP)
-        if intent in _ORDER_ACTIONS or intent == Intent.RETURNS_POLICY:
+        if intent in _ORDER_ACTIONS:
             return execution.result(RetrievalDecision.UNSUPPORTED)
         decision = RetrievalDecision.PRODUCTS
         try:
@@ -265,15 +265,15 @@ class RetrievalCoordinator:
                 execution.issues.append("provisional_history_references")
                 selectors.extend(h.product_id for h in history.references[:self._limits.max_records] if h.product_id)
             elif intent == Intent.UNKNOWN and not selectors and not any(term in text for term in _BUSINESS_NAME):
+                if query.text.rstrip().endswith(('?', '؟')) and not text.startswith(('which product', 'تقصد')):
+                    await execution.fetch('get_business_info')
+                    return execution.result(RetrievalDecision.BUSINESS)
                 # Short answers without supplied history never become confirmations.
                 return execution.result(RetrievalDecision.CLARIFY)
-            if any(term in text for term in _BUSINESS_NAME) and not selectors:
+            if (any(term in text for term in _BUSINESS_NAME) or intent in {Intent.GENERAL_INFO, Intent.RETURNS_POLICY}) and not selectors:
                 decision = RetrievalDecision.BUSINESS
                 await execution.fetch("get_business_info")
                 return execution.result(decision)
-            if intent == Intent.GENERAL_INFO and not selectors:
-                # Current aggregate models identity/name only; no policy APIs exist.
-                return execution.result(RetrievalDecision.UNSUPPORTED)
             if followup and not selectors:
                 return execution.result(RetrievalDecision.CLARIFY)
             if not selectors:
